@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import os
+import re
 import sys
 import time
 
@@ -59,6 +60,15 @@ s3_connection = boto.connect_s3()
 # Set us to the right bucket
 bucket = s3_connection.get_bucket(bucket_name)
 
+# Get the website configuration details of the bucket so we can get the index document name 
+website_configuration = bucket.get_website_configuration()
+index_page = None
+
+if 'WebsiteConfiguration' in website_configuration:
+    if 'IndexDocument' in website_configuration['WebsiteConfiguration']:
+        if 'Suffix' in website_configuration['WebsiteConfiguration']['IndexDocument']:
+            index_page = website_configuration['WebsiteConfiguration']['IndexDocument']['Suffix']
+
 # A list of files to invalidate
 invalidate_files = []
 
@@ -76,8 +86,13 @@ for root, subdirs, files in os.walk(walk_dir):
           remote_md5 = get_remote_md5sum(s3_file)
 
           if md5_for_file(disk_path) != remote_md5:
-              # Save the file for later invalidation
+              # Save the file for later invalidation, checking if we have an 'index' document, and adding the dir as well
               invalidate_files.append(s3_path)
+
+              match = re.search('(.+/)' + index_page + '$', s3_path)
+
+              if match:
+                  invalidate_files.append(match.group(1))
           else:
               # File matches, let's move on
               continue
